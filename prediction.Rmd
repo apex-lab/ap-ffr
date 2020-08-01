@@ -1,0 +1,266 @@
+---
+title: "Absolute Pitch Recognition and the Frequency Following Response"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) 
+set.seed(1)
+theme_set(theme_minimal())
+```
+
+# Comparing the Predictive Power of the FFRs to the Three Stimuli
+
+We fit a Lasso regression model on each stimulus (with the regularization parameter $\lambda$ chosen to minimize $k$-folds cross validation loss on the training set), and then validate the model on a test set. This procedure is repeated many times, calculating $r = \text{corr}(\hat{y}, y)$ on each repetition. The $r$ values are then compared to chance performance $H_0: r = 0$ and to $r$ from models trained on the other stimuli.
+
+```{r}
+library(glmnet)
+library(car)
+cross_validation <- function(x, y) { # performs one trial of cross validation procedure
+  # logit transform y so accuracy isn't [0, 1] bounded
+  y <- logit(y)
+  y <- (y - mean(y))/sd(y)
+  x <- scale(x)
+  # randomly split into training and test set
+  train <- sample(1:nrow(x), 3*nrow(x)/4) 
+  test <- -train
+  # grid search for regularization param, testing values on folds of training data
+  grid <- 10^seq(10, -2, length = 100) 
+  lasso.fit <- glmnet(x[train,], y[train], alpha = 1, lambda = grid) # automatically normalizes data
+  cv.out <- cv.glmnet(x[train,], y[train], alpha = 1, nfolds = 5)
+  # test model with optimal param on hold-out data
+  predictions <- predict(lasso.fit, s = cv.out$lambda.min, newx = x[test,]) 
+  r <- cor(predictions, y[test]) # return correlation b/w predictions and test vals
+  return(r)
+}
+
+get_coeffs <- function(x, y) {
+  y <- logit(y)
+  y <- (y - mean(y))/sd(y)
+  x <- scale(x)
+  grid <- 10^seq(10, -2, length = 100) 
+  lasso.fit <- glmnet(x, y, alpha = 1, lambda = grid)
+  cv.out <- cv.glmnet(x, y, alpha = 1, nfolds = 5)
+  lasso.coef <- predict(lasso.fit, type = "coefficients", s = cv.out$lambda.min)
+  return(lasso.coef)
+}
+
+```
+
+```{r}
+# load data
+x_piano <- read.csv("data/harmonics/piano_harmonics.csv", header = FALSE) # bad subjects are already removed
+colnames(x_piano) <- paste('H', 0:(ncol(x_piano) - 1), sep = "")
+x_complex <- read.csv("data/harmonics/complex_harmonics.csv", header = FALSE)
+colnames(x_complex) <- paste('H', 0:(ncol(x_complex) - 1), sep = "")
+x_da <- read.csv("data/harmonics/da_harmonics.csv", header = FALSE)
+colnames(x_da) <- paste('H', 0:(ncol(x_da) - 1), sep = "")
+behav <- read.csv("data/AP_ABR_Master_4-10-20.csv") # bad subjects not removed yet
+
+# so we remove bad subjects
+bad = c(5, 19, 28, 39);
+behav <- behav[-bad,]
+
+# remove subjects with no pitch scores
+x_piano <- x_piano[!is.na(behav$AP_AVG_ACC),]
+x_complex <- x_complex[!is.na(behav$AP_AVG_ACC),]
+x_da <- x_da[!is.na(behav$AP_AVG_ACC),]
+behav <- behav[!is.na(behav$AP_AVG_ACC),]
+
+# put things in order for glmnet (must be in matrix format)
+x_piano <- as.matrix(x_piano)
+x_complex <- as.matrix(x_complex)
+x_da <- as.matrix(x_da)
+y_piano <- behav$AP_Piano_ACC
+y_sine <- behav$AP_Sine_ACC
+y_avg <- behav$AP_AVG_ACC
+```
+
+```{r, warning = FALSE}
+iters <- 1000 # number of times to perform cross validation
+r_piano <- 1:iters # placeholder array
+r_complex <- 1:iters
+r_da <- 1:iters
+for (iter in 1:iters) {
+  r_piano[iter] <- cross_validation(x_piano, y_avg)
+  r_complex[iter] <- cross_validation(x_complex, y_avg)
+  r_da[iter] <- cross_validation(x_da, y_avg)
+}
+
+# compile all r values into one dataframe for plotting
+r_piano <- data.frame(r_piano)
+colnames(r_piano) <- c("r")
+r_piano$stimulus <- "piano tone"
+r_complex <- data.frame(r_complex)
+colnames(r_complex) <- c("r")
+r_complex$stimulus <- "complex tone"
+r_da <- data.frame(r_da)
+colnames(r_da) <- c("r")
+r_da$stimulus <- "speech: /da/"
+r_vals <- rbind(r_piano, r_complex, r_da)
+
+# apply Fisher z-transformation to correlation values
+r_vals$z <- (log(1 + r_vals$r) - log(1 - r_vals$r)) / 2
+```
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+p1 <- ggplot(r_vals, aes(x = stimulus, y = r, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Stimulus", y = "Correlation Values from Cross-Validation Runs")
+comparisons = list(c(1, 2), c(2, 3), c(1, 3))
+p2 <- ggplot(r_vals, aes(x = stimulus, y = z, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  stat_compare_means(method = "t.test", label =  "p.signif", comparisons=comparisons, paired = F) +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Stimulus", y = "Z-transformed Correlation Values")
+grid.arrange(p1, p2, nrow = 1)
+```
+
+```{r}
+get_coeffs(x_piano, y_avg)
+get_coeffs(x_complex, y_avg) 
+get_coeffs(x_complex, y_avg)
+```
+
+```{r}
+# compute t-stats to spit out in-line
+p_vs_z <- t.test(r_vals$z[r_vals$stimulus == "piano tone"])
+c_vs_z <- t.test(r_vals$z[r_vals$stimulus == "complex tone"])
+d_vs_z <- t.test(r_vals$z[r_vals$stimulus == "speech: /da/"])
+p_vs_c <- t.test(r_vals$z[r_vals$stimulus == "piano tone"], r_vals$z[r_vals$stimulus == "complex tone"])
+p_vs_d <- t.test(r_vals$z[r_vals$stimulus == "piano tone"], r_vals$z[r_vals$stimulus == "speech: /da/"])
+c_vs_d <- t.test(r_vals$z[r_vals$stimulus == "complex tone"], r_vals$z[r_vals$stimulus == "speech: /da/"])
+pm <- mean(r_vals$r[r_vals$stimulus == "piano tone"])
+cm <- mean(r_vals$r[r_vals$stimulus == "complex tone"])
+dm <- mean(r_vals$r[r_vals$stimulus == "speech: /da/"])
+```
+
+
+The FFR to the piano tone clearly predicts pitch classification accuracy the best ($r$ = `r round(pm, 2)`), performing significantly better than chance ($t$(`r p_vs_z$parameter`) = `r round(p_vs_z$statistic, 2)`, $p$ = `r formatC(p_vs_z$p.value, format = "e", digits = 2)`) and than the other two FFRs (complex: $t$(`r round(p_vs_c$parameter, 2)`) = `r round(p_vs_c$statistic, 2)`, $p$ = `r formatC(p_vs_c$p.value, format = "e", digits = 2)`; speech: $t$(`r round(p_vs_d$parameter,2)`) = `r round(p_vs_d$statistic, 2)`, $p$ = `r formatC(p_vs_d$p.value, format = "e", digits = 2)`). The complex tone predicts pitch accuracy very slightly ($r$ = `r round(cm, 2)`), albeit significantly better than chance ($t$(`r c_vs_z$parameter`) = `r round(c_vs_z$statistic, 2)`, $p$ = `r formatC(c_vs_z$p.value, format = "e", digits = 2)`) and better than the speech FFR ($t$(`r round(c_vs_d$parameter, 2)`) = `r round(c_vs_d$statistic, 2)`, $p$ = `r formatC(c_vs_d$p.value, format = "e", digits = 2)`). The FFR to speech, interestingly, performs significantly _worse_ than chance ($t$(`r d_vs_z$parameter`) = `r round(d_vs_z$statistic, 2)`, $p$ = `r formatC(d_vs_z$p.value, format = "e", digits = 2)`), showing robust anti-learning ($r$ = `r round(dm, 2)`). This suggests that the FFR to speech may contain _some_ information that can predict pitch classification accuracy, but that the relationship is highly nonlinear and cannot be captured by our model in an interpretable way.
+
+# Does Piano Tone predict AP performance for piano tones more than for sine tones?
+
+```{r, warning = FALSE}
+r_pianoacc <- 1:iters # placeholder array
+r_sineacc <- 1:iters
+for (iter in 1:iters) {
+  r_pianoacc[iter] <- cross_validation(x_piano, y_piano)
+  r_sineacc[iter] <- cross_validation(x_piano, y_sine)
+}
+
+# compile all r values into one dataframe for plotting
+r_pianoacc <- data.frame(r_pianoacc)
+colnames(r_pianoacc) <- c("r")
+r_pianoacc$stimulus <- "piano tones"
+r_sineacc <- data.frame(r_sineacc)
+colnames(r_sineacc) <- c("r")
+r_sineacc$stimulus <- "sine tones"
+r_vals_type <- rbind(r_pianoacc, r_sineacc)
+
+
+# apply Fisher z-transformation to correlation values
+r_vals_type$z <- (log(1 + r_vals_type$r) - log(1 - r_vals_type$r)) / 2
+```
+
+```{r}
+p1 <- ggplot(r_vals_type, aes(x = stimulus, y = r, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Test", y = "Correlation Values from Cross-Validation Runs")
+comparisons = list(c(1, 2))
+p2 <- ggplot(r_vals_type, aes(x = stimulus, y = z, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  stat_compare_means(method = "t.test", label =  "p.signif", comparisons=comparisons, paired = F) +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Test", y = "Z-transformed Correlation Values")
+grid.arrange(p1, p2, nrow = 1)
+```
+
+```{r}
+get_coeffs(x_piano, y_piano)
+get_coeffs(x_piano, y_sine)
+```
+
+```{r}
+yp_vs_z <- t.test(r_vals_type$z[r_vals_type$stimulus == "piano tones"])
+ys_vs_z <- t.test(r_vals_type$z[r_vals_type$stimulus == "sine tones"])
+yp_vs_ys <- t.test(r_vals_type$z[r_vals_type$stimulus == "piano tones"], 
+                   r_vals_type$z[r_vals_type$stimulus == "sine tones"])
+ypm <- mean(r_vals_type$r[r_vals_type$stimulus == "piano tones"])
+ysm <- mean(r_vals_type$r[r_vals_type$stimulus == "sine tones"])
+```
+
+The piano tone FFR predicts subject performance both on piano tones ($r$ = `r round(ypm, 2)`, $t$(`r yp_vs_z$parameter`) = `r round(yp_vs_z$statistic, 2)`, $p$ = `r formatC(yp_vs_z$p.value, format = "e", digits = 2)`) and on sine tones ($r$ = `r round(ysm, 2)`, $t$(`r ys_vs_z$parameter`) = `r round(ys_vs_z$statistic, 2)`, $p$ = `r formatC(ys_vs_z$p.value, format = "e", digits = 2)`). However, the model does predict significantly better on piano tone performance ($t$(`r round(yp_vs_ys$parameter, 2)`) = `r round(yp_vs_ys$statistic, 2)`, $p$ = `r formatC(yp_vs_ys$p.value, format = "e", digits = 2)`), suggesting a more specific effect of auditory encoding on pitch classification ability. 
+
+# Does the model predict real, continuous variance?
+
+We know from Van Hedger et al. (in review) that the distribution of performance on AP tests is generally bimodal -- one mode around chance represents subjects who are just guessing, and the other represents subjects who are robustly better than chance. Only variance within the latter group represents "real" variance in ability, so we would ideally like our model to be able to predict variance within the above-chance group of subjects (rather than just predicting which subjects are guessing). We would also like the rule out the possibility that our above results are only explained by an effect of musicianship, so we remove all nonmusicians (there weren't that many to start with) and then remove subjects who don't perform significantly above chance on the AP test.
+
+```{r}
+plot(density(y_avg))
+```
+
+
+```{r}
+p <- 1 - pbinom(y_avg*(36+40), 36+40, 1/12)
+p <- p.adjust(p, method = "BH", n = length(p)) # FFR correct the p-values
+behav$above_chance <- (p < 0.05)
+
+# remove chance performers and non-musicians
+idx <- behav$above_chance * (behav$Group != "NO") 
+idx <- as.logical(idx)
+x_piano <- x_piano[idx,]
+y_avg <- y_avg[idx]
+min(y_avg)
+```
+
+Now we'll run our model on just this restricted sample.
+
+```{r}
+r_restricted <- 1:iters # placeholder array
+for (iter in 1:iters) {
+  r_restricted[iter] <- cross_validation(x_piano, y_avg)
+}
+r_restricted <- data.frame(r_restricted)
+colnames(r_restricted) <- c("r")
+r_restricted$stimulus <- "restricted"
+r_restricted$z <- (log(1 + r_restricted$r) - log(1 - r_restricted$r)) / 2
+r_unrestricted <- r_vals[r_vals$stimulus == "piano tone",]
+r_unrestricted$stimulus <- "unrestricted"
+r_vals_rest <- rbind(r_restricted, r_unrestricted)
+```
+
+
+```{r}
+p1 <- ggplot(r_vals_rest, aes(x = stimulus, y = r, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Model", y = "Correlation Values from Cross-Validation Runs")
+comparisons = list(c(1, 2))
+p2 <- ggplot(r_vals_rest, aes(x = stimulus, y = z, fill = stimulus)) +
+  geom_violin() + stat_summary(fun = mean, geom = "point") +
+  stat_compare_means(method = "t.test", label =  "p.signif", comparisons=comparisons, paired = F) +
+  theme_minimal() + guides(fill = FALSE) + 
+  labs(x = "Model", y = "Z-transformed Correlation Values")
+grid.arrange(p1, p2, nrow = 1)
+```
+
+```{r}
+get_coeffs(x_piano, y_avg)
+```
+
+```{r}
+r_vs_z <- t.test(r_vals_rest$z[r_vals_rest$stimulus == "restricted"])
+r_vs_u <- t.test(r_vals_rest$z[r_vals_rest$stimulus == "restricted"], 
+                 r_vals_rest$z[r_vals_rest$stimulus == "unrestricted"])
+rmu <- mean(r_vals_rest$r[r_vals_rest$stimulus == "restricted"])
+```
+
+The restricted model acheives a performance of $r$ = `r round(rmu, 2)`, still significantly better than chance ($t$(`r round(r_vs_z$parameter, 2)`) = `r round(r_vs_z$statistic, 2)`, $p$ = `r formatC(r_vs_z$p.value, format = "e", digits = 2)`). Moreover, its predictive accuracy is not substantially different from the unrestricted model ($t$(`r round(r_vs_u$parameter, 2)`) = `r round(r_vs_u$statistic, 2)`, $p$ = `r formatC(r_vs_u$p.value, format = "e", digits = 2)`). This suggests that our model predicts real variation in absolute pitch ability among above-chance subjects, variance that is currently unexplained by traditional predictors of AP such as musical and tonal language experience (Van Hedger et al., in review).
+
+
