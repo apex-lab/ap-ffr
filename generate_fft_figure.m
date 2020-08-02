@@ -43,11 +43,13 @@ xticks(foi_complex);
 grid on
 h(2) = subplot(2, 3, 2);
 title('Piano Tone');
+ylabel('uV^2/Hz');
 %ylim(ylimits_stim);
 xticks(foi_piano);
 grid on
 h(3) = subplot(2, 3, 3);
 title('Speech: /da/')
+ylabel('uV^2/Hz');
 %ylim(ylimits_stim);
 xticks(foi_da);
 grid on
@@ -58,11 +60,13 @@ xlabel('Hz')
 xticks(foi_complex);
 grid on
 h(5) = subplot(2, 3, 5);
+ylabel('uV^2/Hz');
 xlabel('Hz')
 %ylim(ylimits_eeg);
 xticks(foi_piano);
 grid on
 h(6) = subplot(2, 3, 6);
+ylabel('uV^2/Hz');
 xlabel('Hz')
 %ylim(ylimits_eeg);
 xticks(foi_da);
