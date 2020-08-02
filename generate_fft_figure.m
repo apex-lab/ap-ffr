@@ -60,13 +60,13 @@ xlabel('Hz')
 xticks(foi_complex);
 grid on
 h(5) = subplot(2, 3, 5);
-ylabel('uV^2/Hz');
+ylabel('uV^2/Hz (corrected)');
 xlabel('Hz')
 %ylim(ylimits_eeg);
 xticks(foi_piano);
 grid on
 h(6) = subplot(2, 3, 6);
-ylabel('uV^2/Hz');
+ylabel('uV^2/Hz (corrected)');
 xlabel('Hz')
 %ylim(ylimits_eeg);
 xticks(foi_da);
