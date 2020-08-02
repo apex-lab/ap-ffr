@@ -73,7 +73,7 @@ all_data_freq = ft_freqanalysis(cfg, all_data_raw);
 
 %% export FFT results as .csv
 pow = squeeze(all_data_freq.powspctrm);
-%writematrix(pow, strcat(COND, '_harmonics.csv'));
+writematrix(pow, strcat(COND, '_harmonics.csv'));
 
 %% compute full power spectra
 cfg = [];
