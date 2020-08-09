@@ -28,7 +28,7 @@ cross_validation <- function(x, y) { # performs one trial of cross validation pr
   # grid search for regularization param, testing values on folds of training data
   grid <- 10^seq(10, -2, length = 100) 
   lasso.fit <- glmnet(x[train,], y[train], alpha = 1, lambda = grid) # automatically normalizes data
-  cv.out <- cv.glmnet(x[train,], y[train], alpha = 1, nfolds = 5)
+  cv.out <- cv.glmnet(x[train,], y[train], alpha = 1, nfolds = 3)
   # test model with optimal param on hold-out data
   predictions <- predict(lasso.fit, s = cv.out$lambda.min, newx = x[test,]) 
   r <- cor(predictions, y[test]) # return correlation b/w predictions and test vals
@@ -41,7 +41,7 @@ get_coeffs <- function(x, y) {
   x <- scale(x)
   grid <- 10^seq(10, -2, length = 100) 
   lasso.fit <- glmnet(x, y, alpha = 1, lambda = grid)
-  cv.out <- cv.glmnet(x, y, alpha = 1, nfolds = 5)
+  cv.out <- cv.glmnet(x, y, alpha = 1, nfolds = 4)
   lasso.coef <- predict(lasso.fit, type = "coefficients", s = cv.out$lambda.min)
   return(lasso.coef)
 }
@@ -56,25 +56,22 @@ x_complex <- read.csv("data/harmonics/complex_harmonics.csv", header = FALSE)
 colnames(x_complex) <- paste('H', 0:(ncol(x_complex) - 1), sep = "")
 x_da <- read.csv("data/harmonics/da_harmonics.csv", header = FALSE)
 colnames(x_da) <- paste('H', 0:(ncol(x_da) - 1), sep = "")
-behav <- read.csv("data/AP_ABR_Master_4-10-20.csv") # bad subjects not removed yet
+behav <- read.csv("data/AP_ABR_8-2-2020_Behavioral.csv") # bad subjects already removed
 
-# so we remove bad subjects
-bad = c(5, 19, 28, 39);
-behav <- behav[-bad,]
 
 # remove subjects with no pitch scores
-x_piano <- x_piano[!is.na(behav$AP_AVG_ACC),]
-x_complex <- x_complex[!is.na(behav$AP_AVG_ACC),]
-x_da <- x_da[!is.na(behav$AP_AVG_ACC),]
-behav <- behav[!is.na(behav$AP_AVG_ACC),]
+x_piano <- x_piano[!is.na(behav$ACC_Piano_ACC),]
+x_complex <- x_complex[!is.na(behav$ACC_Piano_ACC),]
+x_da <- x_da[!is.na(behav$ACC_Piano_ACC),]
+behav <- behav[!is.na(behav$ACC_Piano_ACC),]
 
 # put things in order for glmnet (must be in matrix format)
 x_piano <- as.matrix(x_piano)
 x_complex <- as.matrix(x_complex)
 x_da <- as.matrix(x_da)
-y_piano <- behav$AP_Piano_ACC
-y_sine <- behav$AP_Sine_ACC
-y_avg <- behav$AP_AVG_ACC
+y_piano <- behav$AP_Piano_Conservative
+y_sine <- behav$AP_Sine_Conservative
+y_avg <- (36*y_piano + 40*y_sine)/(36 + 40) # weighted b/c different number of trials
 ```
 
 ```{r, warning = FALSE}
@@ -122,9 +119,9 @@ grid.arrange(p1, p2, nrow = 1)
 ```
 
 ```{r}
-get_coeffs(x_piano, y_avg)
-get_coeffs(x_complex, y_avg) 
 get_coeffs(x_complex, y_avg)
+get_coeffs(x_piano, y_avg) 
+get_coeffs(x_da, y_avg)
 ```
 
 ```{r}
@@ -197,29 +194,21 @@ ysm <- mean(r_vals_type$r[r_vals_type$stimulus == "sine tones"])
 
 The piano tone FFR predicts subject performance both on piano tones ($r$ = `r round(ypm, 2)`, $t$(`r yp_vs_z$parameter`) = `r round(yp_vs_z$statistic, 2)`, $p$ = `r formatC(yp_vs_z$p.value, format = "e", digits = 2)`) and on sine tones ($r$ = `r round(ysm, 2)`, $t$(`r ys_vs_z$parameter`) = `r round(ys_vs_z$statistic, 2)`, $p$ = `r formatC(ys_vs_z$p.value, format = "e", digits = 2)`). However, the model does predict significantly better on piano tone performance ($t$(`r round(yp_vs_ys$parameter, 2)`) = `r round(yp_vs_ys$statistic, 2)`, $p$ = `r formatC(yp_vs_ys$p.value, format = "e", digits = 2)`), suggesting a more specific effect of auditory encoding on pitch classification ability. 
 
-# Does the model predict real, continuous variance?
+# Can our effect be explained by musical or tonal language experience?
 
-We know from Van Hedger et al. (in review) that the distribution of performance on AP tests is generally bimodal -- one mode around chance represents subjects who are just guessing, and the other represents subjects who are robustly better than chance. Only variance within the latter group represents "real" variance in ability, so we would ideally like our model to be able to predict variance within the above-chance group of subjects (rather than just predicting which subjects are guessing). We would also like the rule out the possibility that our above results are only explained by an effect of musicianship, so we remove all nonmusicians (there weren't that many to start with) and then remove subjects who don't perform significantly above chance on the AP test.
-
-```{r}
-plot(density(y_avg))
-```
+We remove non-musicians and tonal language speakers from the sample, and train a model on the restricted sample of non-tonal language speaking musicians. (We do this because our musicians with and without AP are matched in musical experience, by virtue of how we sampled subjects during recruiting, but tonal language experience may vary.)
 
 
 ```{r}
-p <- 1 - pbinom(y_avg*(36+40), 36+40, 1/12)
-p <- p.adjust(p, method = "BH", n = length(p)) # FFR correct the p-values
-behav$above_chance <- (p < 0.05)
-
-# remove chance performers and non-musicians
-idx <- behav$above_chance * (behav$Group != "NO") 
+# remove non-musicians and tonal language speakers
+idx <- (behav$Group != "NO") * (behav$Tonal == 0) 
 idx <- as.logical(idx)
 x_piano <- x_piano[idx,]
 y_avg <- y_avg[idx]
-min(y_avg)
+n <- length(y_avg) # number of subjects left
 ```
 
-Now we'll run our model on just this restricted sample.
+Now we'll run our model on just this restricted sample of $n$ subjects.
 
 ```{r}
 r_restricted <- 1:iters # placeholder array
@@ -261,6 +250,8 @@ r_vs_u <- t.test(r_vals_rest$z[r_vals_rest$stimulus == "restricted"],
 rmu <- mean(r_vals_rest$r[r_vals_rest$stimulus == "restricted"])
 ```
 
-The restricted model acheives a performance of $r$ = `r round(rmu, 2)`, still significantly better than chance ($t$(`r round(r_vs_z$parameter, 2)`) = `r round(r_vs_z$statistic, 2)`, $p$ = `r formatC(r_vs_z$p.value, format = "e", digits = 2)`). Moreover, its predictive accuracy is not substantially different from the unrestricted model ($t$(`r round(r_vs_u$parameter, 2)`) = `r round(r_vs_u$statistic, 2)`, $p$ = `r formatC(r_vs_u$p.value, format = "e", digits = 2)`). This suggests that our model predicts real variation in absolute pitch ability among above-chance subjects, variance that is currently unexplained by traditional predictors of AP such as musical and tonal language experience (Van Hedger et al., in review).
+The restricted model acheives an average performance of $r$ = `r round(rmu, 2)`, still significantly better than chance ($t$(`r round(r_vs_z$parameter, 2)`) = `r round(r_vs_z$statistic, 2)`, $p$ = `r formatC(r_vs_z$p.value, format = "e", digits = 2)`). Moreover, its predictive accuracy actually _improves_ compared to the unrestricted model ($t$(`r round(r_vs_u$parameter, 2)`) = `r round(r_vs_u$statistic, 2)`, $p$ = `r formatC(r_vs_u$p.value, format = "e", digits = 2)`). This suggests that we aren't merely replicating known effects of musical and tonal language experience on the FFR and on AP ability, but the FFR predicts AP ability on its own.
 
-
+```{r}
+sessionInfo() # a meager attempt at "package management" in a conda-less world
+```
