@@ -208,7 +208,7 @@ y_avg <- y_avg[idx]
 n <- length(y_avg) # number of subjects left
 ```
 
-Now we'll run our model on just this restricted sample of $n$ subjects.
+Now we'll run our model on just this restricted sample of `r n` subjects.
 
 ```{r}
 r_restricted <- 1:iters # placeholder array
@@ -229,13 +229,13 @@ r_vals_rest <- rbind(r_restricted, r_unrestricted)
 p1 <- ggplot(r_vals_rest, aes(x = stimulus, y = r, fill = stimulus)) +
   geom_violin() + stat_summary(fun = mean, geom = "point") +
   theme_minimal() + guides(fill = FALSE) + 
-  labs(x = "Model", y = "Correlation Values from Cross-Validation Runs")
+  labs(x = "Sample", y = "Correlation Values from Cross-Validation Runs")
 comparisons = list(c(1, 2))
 p2 <- ggplot(r_vals_rest, aes(x = stimulus, y = z, fill = stimulus)) +
   geom_violin() + stat_summary(fun = mean, geom = "point") +
   stat_compare_means(method = "t.test", label =  "p.signif", comparisons=comparisons, paired = F) +
   theme_minimal() + guides(fill = FALSE) + 
-  labs(x = "Model", y = "Z-transformed Correlation Values")
+  labs(x = "Sample", y = "Z-transformed Correlation Values")
 grid.arrange(p1, p2, nrow = 1)
 ```
 
