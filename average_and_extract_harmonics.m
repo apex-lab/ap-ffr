@@ -12,9 +12,9 @@ BAD_SUBJ = [5 19 28 39];
 LP_FILTER = 2000;
 
 % condition specific info
-COND = 'complex';
-F0 = 100;
-TIME_WINDOW = [0 .08]; % in seconds
+COND = 'piano';
+F0 = 262.67;
+TIME_WINDOW = [0 .2]; % in seconds
 
 s = RandStream('mlfg6331_64'); % set random seed for reproducible results
 
