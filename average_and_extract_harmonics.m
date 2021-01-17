@@ -13,8 +13,8 @@ LP_FILTER = 2000;
 
 % condition specific info
 COND = 'complex';
-F0 = 207.65;
-TIME_WINDOW = [0 .2]; % in seconds
+F0 = 100;
+TIME_WINDOW = [0 .08]; % in seconds
 
 s = RandStream('mlfg6331_64'); % set random seed for reproducible results
 
@@ -85,6 +85,11 @@ cfg.taper      = 'hanning'; % applies hanning taper on window before FFT
 cfg.keeptrials  = 'no';
 all_data_fft = ft_freqanalysis(cfg, all_data_raw);
 all_noninv_fft = ft_freqanalysis(cfg, all_noninv_raw);
+
+cfg = [];
+cfg.parameter = 'powspctrm';
+cfg.operation = 'log10';
+all_noninv_fft = ft_math(cfg, all_noninv_fft);
 
 % correct for 1/f dropoff
 all_data_fft.powspctrm = all_data_fft.powspctrm .* all_data_fft.freq.^2;

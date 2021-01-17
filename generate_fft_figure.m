@@ -1,3 +1,5 @@
+addpath('functions');
+
 % Load saved figures
 a = hgload('figures/complex_fft.fig');
 b = hgload('figures/piano_fft.fig');
@@ -43,13 +45,13 @@ xticks(foi_complex);
 grid on
 h(2) = subplot(2, 3, 2);
 title('Piano Tone');
-ylabel('uV^2/Hz');
+ylabel('log(uV^2/Hz)');
 %ylim(ylimits_stim);
 xticks(foi_piano);
 grid on
 h(3) = subplot(2, 3, 3);
 title('Speech: /da/')
-ylabel('uV^2/Hz');
+ylabel('log(uV^2/Hz)');
 %ylim(ylimits_stim);
 xticks(foi_da);
 grid on
