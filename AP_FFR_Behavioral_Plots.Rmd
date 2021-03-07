@@ -1,0 +1,38 @@
+---
+title: "AP_FFR_Behavioral_Plots"
+author: "Katie Reis"
+date: "2/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(ggpubr)
+```
+
+```{r, fig.width = 13}
+setwd("~/Desktop/Lab/AP_FFR")
+behav <- read.csv("AP_FFR_Behavioral_Final_02-2021.csv") # bad subjects already removed
+
+# remove subjects with no pitch scores
+behav <- behav[!is.na(behav$AP_Piano_ACC) & !is.na(behav$Pitch.Adjustment) & behav$Group != 'NO',]
+
+p1 <- ggscatter(behav, x = "AP_Sine_Conservative", y = "AP_Piano_Conservative",
+                color = "Group", 
+                shape = "Group",
+                xlab = "Sine Score",
+                ylab = "Piano Score") + font("x", size = 16) + font("y", size = 16) 
+
+p2 <- ggboxplot(behav, x = "Group", y = "Pitch.Adjustment",
+                color = "Group", 
+                add = "jitter", shape = "Group",
+                ylab = "Pitch Adjustment Score") + font("x", size = 16) + font("y", size = 16) 
+
+p3 <- ggboxplot(behav, x = "Group", y = "JND",
+                color = "Group", 
+                add = "jitter", shape = "Group",
+                ylab = "JND Score") + font("x", size = 16) + font("y", size = 16) 
+ 
+ggarrange(p1, p2, p3, ncol = 3, nrow = 1, labels = c("a", "b", "c"), common.legend = TRUE, legend = "top") 
+```
